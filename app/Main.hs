@@ -30,7 +30,9 @@ import Network.Wai.Middleware.Cors
 import Database.PostgreSQL.Simple
 import Database.PostgreSQL.Simple.Time
 
-import Config as C
+import Elm (Spec (Spec), specsToDir, toElmDecoderSource, toElmTypeSource)
+import Servant.Elm (ElmType, Proxy (Proxy), defElmImports, generateElmForAPI)
+
 import Time
 import Workout
 
@@ -61,22 +63,19 @@ reps r = do
   setReps conn user r
 
 selectWorkout :: Query
-selectWorkout = "select cycle, start from workout where user = ?"
+selectWorkout = "select cycle, cyclestart from workout where id = ?"
 
 selectWeights :: Query
-selectWeights = "select mass from weight order by index asc"
-
-selectGym :: Query
-selectGym = "select name, prestige, teamid from gym where stringgymid = ?"
+selectWeights = "select squat, bench, bentrow, overhead, deadlift, curl, calves from weights"
 
 updateStart :: Query
-updateStart = "update workout set start = ? where user = ?"
+updateStart = "update workout set start = ? where id = ?"
 
 queryWorkout :: Connection -> Int -> Handler Workout
 queryWorkout conn user = do
   [(cycle, start)] <- liftIO $ query conn selectWorkout ( Only user )
-  weightResult <- liftIO $ query_ conn selectWeights
-  let weights = map (\(Only x) -> x) weightResult
+  [(squat, bench, bentrow, overhead, deadlift, curl, calves)] <- liftIO $ query_ conn selectWeights
+  let weights = [squat, bench, bentrow, overhead, deadlift, curl, calves]
   return $ Workout cycle start weights
 
 setReps :: Connection -> Int -> Int -> Handler Workout
@@ -92,5 +91,16 @@ userAPI = Proxy
 app :: Application
 app = simpleCors $ serve userAPI server
 
+instance ElmType Workout
+
+spec :: Spec
+spec = Spec ["AllproApi"]
+  (defElmImports
+   : toElmTypeSource (Proxy :: Proxy Workout)
+   : toElmDecoderSource (Proxy :: Proxy Workout)
+   : generateElmForAPI (Proxy :: Proxy API))
+
 main :: IO ()
-main = run 8082 app
+main = do
+  specsToDir [spec] "elm"
+  run 8082 app
